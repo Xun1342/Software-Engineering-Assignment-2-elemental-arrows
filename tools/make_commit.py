@@ -33,7 +33,8 @@ def main():
         author=AUTHOR,
         committer=AUTHOR,
     )
-    print(porcelain.log(repo, max_entries=1).decode("utf-8", errors="replace"))
+    new_head = repo.head().decode("ascii")
+    print(f"committed {new_head[:10]}  {message}")
 
 
 if __name__ == "__main__":

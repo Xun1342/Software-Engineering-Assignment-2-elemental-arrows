@@ -195,6 +195,31 @@ class Board:
         """尚未飞出棋盘的箭头数（含正在飞的）。"""
         return sum(1 for a in self.arrows.values() if a.state != "gone")
 
+    def is_animating(self):
+        """是否有箭头正在播放飞出/碰撞动画（动画期间锁定输入）。"""
+        return any(a.state in ("flying", "shaking") for a in self.arrows.values())
+
+    def is_clear_to_edge(self, arrow):
+        """路径检测（基础版核心规则）。
+
+        判断与箭头同一行（左/右）或同一列（上/下）、沿箭头朝向到棋盘
+        边界之间，是否还存在其他箭头：没有阻挡返回 True，可以飞出。
+        """
+        dc, dr = S.DIRS[arrow.direction]
+        r, c = arrow.row + dr, arrow.col + dc
+        while 0 <= r < self.rows and 0 <= c < self.cols:
+            other = self.arrows.get((r, c))
+            if other is not None and other.state != "gone":
+                return False
+            r += dr
+            c += dc
+        return True
+
+    def removable_arrows(self):
+        """当前所有满足飞出条件的箭头（测试与提示功能使用）。"""
+        return [a for a in self.arrows.values()
+                if a.state == "idle" and self.is_clear_to_edge(a)]
+
     # —— 帧更新 ——
     def update(self, dt, now):
         for arrow in list(self.arrows.values()):

@@ -28,7 +28,21 @@ class App:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 return False
+            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                self.on_click(event.pos)
         return True
+
+    def on_click(self, pos):
+        """点击箭头：路径无阻挡则飞出棋盘并消除。"""
+        if self.board.is_animating():
+            return
+        arrow = self.board.arrow_at(pos)
+        if arrow is None:
+            return
+        if self.board.is_clear_to_edge(arrow):
+            arrow.launch()
+            self.sound.play("fly")
+        # 被阻挡的反馈与失误计数在第三阶段实现
 
     # —— 更新 ——
     def update(self, dt):
