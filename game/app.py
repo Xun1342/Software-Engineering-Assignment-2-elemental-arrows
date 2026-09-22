@@ -13,8 +13,10 @@ from . import ui
 from . import save as save_mod
 from .audio import SoundManager
 from .board import Board
+from .fx import ParticleManager
 from .levelgen import generate_level, solve as solve_level
 from .levels import LEVELS
+from .mascot import Mascot, IDLE, HAPPY, ALERT, SAD, CELEBRATE
 
 _ASSET_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -75,6 +77,11 @@ class App:
         self.fail_menu_btn = ui.Button((290, 556, 190, 50), "返回菜单",
                                        size=22, primary=False)
 
+        # —— 精灵向导与粒子 ——
+        self.mascot = Mascot()
+        self.fx = ParticleManager(S.WINDOW_W, S.WINDOW_H)
+        self.bg_grad = self._make_gradient((28, 32, 60), (12, 14, 32))
+
         self.now = 0.0
         self.floaters = []
         self.flash_t = 0.0
@@ -91,6 +98,15 @@ class App:
         self.demo = False
         self.demo_queue = []
         self.demo_at = 0.0
+
+    def _make_gradient(self, top, bottom):
+        surf = pygame.Surface((S.WINDOW_W, S.WINDOW_H))
+        for y in range(S.WINDOW_H):
+            t = y / (S.WINDOW_H - 1)
+            surf.fill(
+                tuple(int(top[i] + (bottom[i] - top[i]) * t) for i in range(3)),
+                (0, y, S.WINDOW_W, 1))
+        return surf
 
     def _load_bg(self):
         path = os.path.join(_ASSET_DIR, "bg_menu.png")
@@ -120,6 +136,9 @@ class App:
         self.history.clear()
         self.last_stars = 0
         self._stop_demo()
+        self.fx.clear_front()
+        self.mascot.set_state(IDLE, self.now, 0.1)
+        self.mascot.bubble_text = None
 
     def start_random(self):
         data = generate_level(rows=7, cols=7, count=15)
@@ -140,6 +159,7 @@ class App:
             return
         if self.board.show_hint(self.now):
             self.sound.play("click")
+            self.mascot.set_state(ALERT, self.now, 1.6)
             self.add_floater("金色脉动的箭头可以飞出",
                              (S.WINDOW_W // 2, 612), color=S.GOLD_HI)
         else:
@@ -181,6 +201,7 @@ class App:
         self.demo_at = self.now + 0.45
         self.demo_btn.label = "停止演示"
         self.sound.play("click")
+        self.mascot.set_state(ALERT, self.now, 1.6)
         self.add_floater("精灵将自动演示解法", (S.WINDOW_W // 2, 612),
                          color=S.GOLD_HI)
 
@@ -191,13 +212,17 @@ class App:
 
     def _launch(self, arrow):
         """一支箭头飞出（玩家点击与自动演示共用）。"""
+        center = self.board.cell_center(arrow.row, arrow.col)
         self.history.append(
             (self.board.snapshot(), self.mistakes_left, self.moves))
         arrow.launch()
         self.moves += 1
         self.sound.play("fly")
-        self.add_floater("飞出", self.board.cell_center(arrow.row, arrow.col),
-                         color=S.GOLD_HI)
+        elem = S.ELEMENTS[arrow.element_idx][1]
+        self.fx.burst(center, colors=[S.GOLD_HI, elem, (255, 250, 225)])
+        if not self.demo:
+            self.mascot.set_state(HAPPY, self.now, 0.8)
+        self.add_floater("飞出", center, color=S.GOLD_HI)
 
     # —— 事件 ——
     def handle_events(self):
@@ -223,6 +248,7 @@ class App:
                 if self.select_entry_btn.handle_event(event):
                     self.sound.play("click")
                     self.state = self.SELECT
+                    self.mascot.say("选一关开始吧！", self.now, 3.0)
                 elif self.random_entry_btn.handle_event(event):
                     self.sound.play("click")
                     self.start_random()
@@ -247,6 +273,7 @@ class App:
                     self.sound.play("click")
                     self._stop_demo()
                     self.state = self.SELECT
+                    self.mascot.say("选一关继续挑战！", self.now, 3.0)
                 elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     self.on_click(event.pos)
                 else:
@@ -319,6 +346,9 @@ class App:
             self.mistakes_left -= 1
             self.flash_t = 0.45
             self.sound.play("blocked")
+            self.fx.blocked_burst(
+                self.board.cell_center(arrow.row, arrow.col))
+            self.mascot.set_state(SAD, self.now, 1.2)
             self.add_floater("阻挡！", self.board.cell_center(arrow.row, arrow.col))
             if self.mistakes_left <= 0:
                 self.fail_at = self.now + S.SHAKE_DURATION + 0.15
@@ -329,6 +359,7 @@ class App:
     # —— 更新 ——
     def update(self, dt):
         self.now += dt
+        self.fx.update(dt)
         if self.state != self.MENU and self.state != self.SELECT:
             self.board.update(dt, self.now)
         if self.state == self.PLAYING:
@@ -355,6 +386,8 @@ class App:
 
         if self.state == self.FAILING and self.now >= self.fail_at:
             self.state = self.FAILED
+            self.mascot.set_state(SAD, self.now, 99)
+            self.mascot.say("别灰心，再试一次！", self.now, 3.2)
         elif self.state == self.PLAYING and self.board.remaining() == 0:
             self.state = self.CLEARING
             self.clear_at = self.now + 0.55
@@ -364,6 +397,8 @@ class App:
 
     def _finish_level(self):
         """通关结算：评星、写存档并决定进入下一关还是全部通关。"""
+        self.fx.confetti()
+        self.mascot.set_state(CELEBRATE, self.now, 99)
         if self.mode == "campaign":
             self.last_stars = save_mod.compute_stars(
                 self.level["mistakes"], self.mistakes_left)
@@ -372,7 +407,13 @@ class App:
                 self.elapsed, self.moves, len(LEVELS))
             if self.level_index + 1 < len(LEVELS):
                 self.state = self.CLEAR
+                text = ("完美！零失误三星！" if self.last_stars == 3
+                        else "通关啦，冲击三星吧！")
+                self.mascot.say(text, self.now, 3.2)
                 return
+            self.mascot.say("七元素试炼全部完成！", self.now, 3.6)
+        else:
+            self.mascot.say("随机试炼完成！", self.now, 3.2)
         self.state = self.ALL_CLEAR
 
     # —— 绘制 ——
@@ -426,6 +467,7 @@ class App:
             ui.draw_text(self.screen, line, (60, 392 + i * 34),
                          size=17, color=S.CREAM, shadow=False)
 
+        self.mascot.draw(self.screen, (472, 116), self.now, scale=1.05)
         self.select_entry_btn.draw(self.screen)
         self.random_entry_btn.draw(self.screen)
         ui.draw_text(self.screen, "美术背景由 AI 生成、音效与界面由程序原创合成",
@@ -440,7 +482,7 @@ class App:
             veil.fill((14, 18, 42, 150))
             self.screen.blit(self.bg, (0, 0))
             self.screen.blit(veil, (0, 0))
-        ui.draw_text(self.screen, "选择关卡", (S.WINDOW_W // 2, 70),
+        ui.draw_text(self.screen, "选择关卡", (S.WINDOW_W // 2, 52),
                      size=40, color=S.GOLD_HI, bold=True, center=True)
 
         self.card_rects = []
@@ -460,30 +502,30 @@ class App:
                 border=accent if unlocked else (70, 74, 100),
                 radius=16, border_width=2)
             ui.draw_text(self.screen, f"第 {i + 1} 关",
-                         rect.move(0, 10).center, size=20,
+                         rect.move(0, -16).center, size=20,
                          color=S.CREAM if unlocked else (130, 134, 160),
                          bold=True, center=True)
             if unlocked:
                 ui.draw_text(self.screen, level["name"].split(" · ")[-1],
-                             rect.move(0, 42).center, size=18, color=accent,
+                             rect.move(0, 16).center, size=18, color=accent,
                              center=True, shadow=False)
                 stars = self.save_data["stars"].get(str(i), 0)
                 for k in range(3):
                     ui.draw_star(
                         self.screen,
-                        (rect.centerx - 30 + k * 30, rect.bottom - 34),
+                        (rect.centerx - 30 + k * 30, rect.bottom - 36),
                         radius=13, filled=k < stars)
                 best = self.save_data["best"].get(str(i))
                 if best:
                     ui.draw_text(self.screen, f"最佳 {fmt_time(best['time'])}",
-                                 (rect.centerx, rect.bottom - 12),
+                                 (rect.centerx, rect.bottom - 13),
                                  size=12, color=(170, 178, 210),
                                  center=True, shadow=False)
             else:
                 ui.draw_lock(self.screen,
-                             (rect.centerx, rect.centery + 26), size=30)
+                             (rect.centerx, rect.centery + 16), size=28)
                 ui.draw_text(self.screen, "通关前一关解锁",
-                             (rect.centerx, rect.bottom - 24),
+                             (rect.centerx, rect.bottom - 18),
                              size=13, color=(120, 126, 156),
                              center=True, shadow=False)
 
@@ -499,12 +541,18 @@ class App:
                      size=15, color=S.CREAM, center=True, shadow=False)
         self.select_back_btn.draw(self.screen)
 
+        # 精灵向导
+        self.mascot.draw(self.screen, (470, 104), self.now, scale=0.9)
+        self.mascot.draw_bubble(self.screen, self.now, (300, 100), width=220)
+
     # —— 游戏界面 ——
     def draw_game(self):
-        self.screen.fill((18, 22, 44))
+        self.screen.blit(self.bg_grad, (0, 0))
+        self.fx.draw_behind(self.screen, self.now)
         self.draw_hud()
         self.board.draw(self.screen, self.now, hover_pos=pygame.mouse.get_pos())
         self.draw_floaters()
+        self.fx.draw_front(self.screen)
         for btn in (self.hint_btn, self.undo_btn, self.restart_btn, self.menu_btn,
                     self.demo_btn, self.to_select_btn):
             btn.draw(self.screen)
@@ -514,8 +562,12 @@ class App:
         ui.draw_text(self.screen, "快捷键：H 提示　Z 撤销　R 重开　Esc 菜单",
                      (S.WINDOW_W // 2, 770), size=15,
                      color=(150, 158, 190), center=True, shadow=False)
+        overlay = self.state in (self.FAILED, self.CLEAR, self.ALL_CLEAR)
+        if not overlay:
+            # 常驻在右上角的精灵向导
+            self.mascot.draw(self.screen, (482, 44), self.now, scale=0.82)
         if self.flash_t > 0:
-            alpha = int(95 * (self.flash_t / 0.45))
+            alpha = int(60 * (self.flash_t / 0.45))
             veil = pygame.Surface((S.WINDOW_W, S.WINDOW_H), pygame.SRCALPHA)
             veil.fill((210, 60, 70, alpha))
             self.screen.blit(veil, (0, 0))
@@ -525,6 +577,13 @@ class App:
             self.draw_clear()
         elif self.state == self.ALL_CLEAR:
             self.draw_all_clear()
+        if overlay:
+            # 彩屑与庆祝精灵画在弹窗之上
+            self.fx.draw_front(self.screen)
+            self.mascot.draw(self.screen, (S.WINDOW_W // 2, 148),
+                             self.now, scale=1.0)
+            self.mascot.draw_bubble(self.screen, self.now,
+                                    (S.WINDOW_W // 2, 92), width=250)
 
     def draw_hud(self):
         accent = S.ELEMENTS[self.level["accent"]][1]

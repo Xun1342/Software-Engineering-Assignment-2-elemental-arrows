@@ -15,6 +15,21 @@ _FONT_CANDIDATES = [
 ]
 
 
+def wrap_text(text, font, max_width):
+    """按像素宽度把中文文本折成多行。"""
+    lines = []
+    cur = ""
+    for ch in text:
+        if font.size(cur + ch)[0] > max_width and cur:
+            lines.append(cur)
+            cur = ch
+        else:
+            cur += ch
+    if cur:
+        lines.append(cur)
+    return lines
+
+
 def get_font(size, bold=False):
     key = (size, bold)
     if key in _FONT_CACHE:
