@@ -164,6 +164,27 @@ class Board:
             # 元素色按七元素循环分布
             self.arrows[(r, c)] = Arrow(r, c, d, i % len(S.ELEMENTS))
         self.set_panel_rect(pygame.Rect(S.PANEL_RECT))
+        self.hint_until = 0.0  # 提示高亮截止时刻
+
+    # —— 快照 / 恢复（撤销功能）——
+    def snapshot(self):
+        """保存当前所有待机箭头的位置、方向与元素色。"""
+        return [(a.row, a.col, a.direction, a.element_idx)
+                for a in self.arrows.values() if a.state == "idle"]
+
+    def restore(self, data):
+        """根据 snapshot 的数据重建棋盘（撤销到上一步）。"""
+        self.arrows = {}
+        for r, c, d, element_idx in data:
+            self.arrows[(r, c)] = Arrow(r, c, d, element_idx)
+        self.hint_until = 0.0
+
+    def show_hint(self, now, duration=S.HINT_DURATION):
+        """高亮当前所有可以飞出的箭头。"""
+        if self.removable_arrows():
+            self.hint_until = now + duration
+            return True
+        return False
 
     def set_panel_rect(self, panel_rect):
         self.panel_rect = pygame.Rect(panel_rect)
@@ -232,9 +253,26 @@ class Board:
     def draw(self, surf, now, hover_pos=None):
         self._draw_panel(surf)
         hovered = self.arrow_at(hover_pos) if hover_pos else None
+        hint_on = now < self.hint_until
+        hint_set = set()
+        if hint_on:
+            hint_set = {id(a) for a in self.removable_arrows()}
         for arrow in self.arrows.values():
             center = self.cell_center(arrow.row, arrow.col)
             arrow.draw(surf, center, self.cell, now, hovered=arrow is hovered)
+            if hint_on and id(arrow) in hint_set and arrow.state == "idle":
+                pulse = 0.5 + 0.5 * math.sin(now * 8.0 + arrow.phase)
+                # 外层柔光 + 内层亮框，双层金色脉动
+                for size, alpha, width in (
+                    (int(self.cell * 1.02), int(50 + 60 * pulse), 7),
+                    (int(self.cell * 0.86), int(150 + 100 * pulse), 3),
+                ):
+                    rect = pygame.Rect(0, 0, size, size)
+                    rect.center = center
+                    ring = pygame.Surface(rect.size, pygame.SRCALPHA)
+                    pygame.draw.rect(ring, (*S.GOLD_HI, alpha),
+                                     ring.get_rect(), width, border_radius=14)
+                    surf.blit(ring, rect.topleft)
 
     def _draw_panel(self, surf):
         r = self.panel_rect

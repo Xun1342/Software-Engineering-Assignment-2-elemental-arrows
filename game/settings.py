@@ -12,10 +12,13 @@ FPS = 60
 TITLE = "元素之箭 · 一箭又一箭"
 
 # 棋盘面板
-PANEL_RECT = (20, 170, 500, 500)
+PANEL_RECT = (20, 140, 500, 472)
 PANEL_PAD = 26          # 面板内边距
 CELL_MAX = 76           # 单格最大像素
 DOT_RADIUS = 2          # 网格点半径
+
+# 提示高亮持续时间（秒）
+HINT_DURATION = 2.0
 
 # 方向：像素位移 (dx, dy) 与网格位移 (dc, dr) 一致
 DIRS = {
