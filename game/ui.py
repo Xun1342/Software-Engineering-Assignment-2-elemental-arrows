@@ -85,6 +85,45 @@ class Button:
                   bold=True, center=True, shadow=False)
 
 
+def star_points(center, radius_outer, radius_inner=None, points=5, rotation=-90):
+    """五角星顶点列表。"""
+    import math
+    if radius_inner is None:
+        radius_inner = radius_outer * 0.45
+    cx, cy = center
+    out = []
+    for i in range(points * 2):
+        r = radius_outer if i % 2 == 0 else radius_inner
+        ang = math.radians(rotation + i * 180 / points)
+        out.append((cx + r * math.cos(ang), cy + r * math.sin(ang)))
+    return out
+
+
+def draw_star(surf, center, radius=18, filled=True, color=None):
+    color = color or S.GOLD_HI
+    pts = star_points(center, radius)
+    if filled:
+        pygame.draw.polygon(surf, color, pts)
+        pygame.draw.polygon(surf, S.GOLD_DARK, pts, 2)
+        # 高光
+        pygame.draw.circle(surf, (255, 250, 225),
+                           (center[0] - radius // 3, center[1] - radius // 3),
+                           max(1, radius // 7))
+    else:
+        pygame.draw.polygon(surf, (86, 90, 120), pts, 3)
+
+
+def draw_lock(surf, center, size=22):
+    """简单的挂锁图案（未解锁关卡用）。"""
+    x, y = center
+    body = pygame.Rect(x - size // 2, y - size // 6, size, int(size * 0.62))
+    pygame.draw.arc(surf, (150, 156, 188),
+                    (x - size // 3, y - size // 2, int(size * 0.66), size),
+                    3.4, 6.1, 4)
+    pygame.draw.rect(surf, (120, 126, 160), body, border_radius=4)
+    pygame.draw.circle(surf, (40, 44, 72), (x, y + size // 6), 3)
+
+
 def draw_heart(surf, center, radius=11, filled=True):
     """画一颗菱形元素心（剩余失误次数）。"""
     x, y = center
